@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 링크에 들어 있는 긴 비밀 키(room)를 아는 사람만 읽고 쓸 수 있어요.
+    match /rooms/{room}/{document=**} {
+      allow read, write: if room.size() >= 32;
+    }
+  }
+}
