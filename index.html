@@ -23,6 +23,25 @@ img{max-width:100%}
 .share-btn{position:absolute;right:0;top:16px;border:1px solid var(--line);background:var(--surface);color:var(--accent);border-radius:99px;padding:6px 12px;font-size:12.5px;font-weight:700}
 header{position:sticky}
 header{isolation:isolate}
+.cal-btn{position:absolute;right:0;top:16px;width:32px;height:32px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--accent);display:grid;place-items:center;padding:0}
+.dday{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:4px;cursor:pointer}
+.dday[hidden]{display:none}
+.dday-main{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.dday-n{font-size:42px;font-weight:800;color:var(--accent);letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.05}
+.dday-t{font-size:17px;font-weight:700;overflow-wrap:anywhere}
+.dday-d{font-size:12.5px;color:var(--muted);margin-top:4px}
+.dday-more{display:flex;gap:6px;margin-top:10px;overflow-x:auto;padding-bottom:2px}
+.dday-more span{flex:none;white-space:nowrap;font-size:12.5px;background:var(--accent-soft);color:var(--accent);border-radius:99px;padding:3px 10px;font-weight:700}
+.cal-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.cal-nav b{font-size:16px}
+.cal-nav .chip{width:40px;padding:4px 0;text-align:center;font-size:18px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.cal-w{font-size:12px;color:var(--muted);padding:4px 0}
+.cal-w:first-child{color:var(--warn)}
+.cal-c{height:42px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;font-size:14px;font-variant-numeric:tabular-nums;gap:2px}
+.cal-c.today{outline:1.5px solid var(--accent)}
+.cal-c.has{background:var(--accent-soft);font-weight:700;color:var(--accent)}
+.cal-c i{width:5px;height:5px;border-radius:9px;background:var(--accent)}
 .pw{z-index:60}
 .pw input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;font-size:26px;letter-spacing:.5em;text-align:center;text-indent:.5em}
 .pw .hint{margin-top:10px}
@@ -261,8 +280,11 @@ h1 .en{font-weight:500;color:var(--accent);letter-spacing:-.2px;margin-left:6px}
 <div class="wrap">
   <header>
     <h1><span class="en" style="margin-left:0">planning</span></h1>
+    <button class="cal-btn" id="cal-btn" type="button" aria-label="달력"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></button>
     <div id="notice" class="notice" hidden></div>
   </header>
+
+  <div class="dday" id="dday" role="button" tabindex="0" aria-label="D-day와 달력 열기"><div class="hint" style="text-align:center">일정을 불러오는 중이에요</div></div>
 
   <section id="view-checklist">
     <div class="summary">
@@ -756,6 +778,80 @@ function renderCosts(){
   }).join("");
 }
 
+/* ---------- D-day + 달력 ---------- */
+S.events=[]; S.loaded.e=false;
+const WD="일월화수목금토";
+const pd=s=>{const [y,m,d]=String(s).split("-").map(Number);return new Date(y,m-1,d)};
+const daysTo=s=>{const t=new Date();return Math.round((pd(s)-new Date(t.getFullYear(),t.getMonth(),t.getDate()))/864e5)};
+const ddayTxt=n=>n===0?"D-DAY":n>0?"D-"+n:"D+"+(-n);
+const fmtDate=s=>{const d=pd(s);return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")} (${WD[d.getDay()]})`};
+const validEv=()=>S.events.filter(e=>/^\d{4}-\d{2}-\d{2}$/.test(e.date||""));
+function renderDday(){
+  if(!S.loaded.e) return;
+  const ev=validEv().map(e=>({...e,n:daysTo(e.date)}));
+  const up=ev.filter(e=>e.n>=0).sort((a,b)=>a.n-b.n), past=ev.filter(e=>e.n<0).sort((a,b)=>b.n-a.n);
+  const hero=up[0]||past[0];
+  if(!hero){$("dday").innerHTML=`<div class="hint" style="text-align:center">${S.canWrite?"+ 본식·상견례·촬영 날짜를 넣으면 여기에 D-day로 떠요":"등록된 일정이 없어요"}</div>`;return}
+  const more=up.slice(1);
+  $("dday").innerHTML=`<div class="dday-main"><span class="dday-n">${ddayTxt(hero.n)}</span><span class="dday-t">${esc(hero.title)}</span></div>
+    <div class="dday-d">${fmtDate(hero.date)}</div>
+    ${more.length?`<div class="dday-more">${more.map(e=>`<span>${esc(e.title)} ${ddayTxt(e.n)}</span>`).join("")}</div>`:""}`;
+}
+function renderCal(){
+  const y=S.calY, m=S.calM, first=new Date(y,m,1).getDay(), n=new Date(y,m+1,0).getDate(), today=new Date();
+  const byDate={}; validEv().forEach(e=>(byDate[e.date]=byDate[e.date]||[]).push(e));
+  let cells=WD.split("").map(w=>`<div class="cal-w">${w}</div>`).join("")+"<div></div>".repeat(first);
+  for(let d=1;d<=n;d++){
+    const k=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`, has=byDate[k];
+    const isT=y===today.getFullYear()&&m===today.getMonth()&&d===today.getDate();
+    cells+=`<div class="cal-c${isT?" today":""}${has?" has":""}"${has?` title="${esc(has.map(e=>e.title).join(", "))}"`:""}><span>${d}</span>${has?"<i></i>":""}</div>`;
+  }
+  $("cal-title").textContent=`${y}년 ${m+1}월`;
+  const list=validEv().map(e=>({...e,n:daysTo(e.date)})).sort((a,b)=>a.date.localeCompare(b.date));
+  $("cal-body").innerHTML=`<div class="cal-grid">${cells}</div><div class="sec-h" style="margin-top:14px">전체 일정</div><div class="pick-list">${
+    list.length?list.map(e=>`<button class="pick-line${e.n>=0?" on":""}" type="button" data-ev="${esc(e.id)}"><span>${esc(fmtDate(e.date))}</span><b>${esc(e.title)}</b><span>${ddayTxt(e.n)}</span></button>`).join("")
+    :'<div class="hint">아직 일정이 없어요</div>'}</div>`;
+}
+function calSheet(){
+  const t=new Date(); S.calY=t.getFullYear(); S.calM=t.getMonth();
+  openSheet(`<h3>달력</h3>
+    <div class="cal-nav"><button class="chip" type="button" data-cal="-1" aria-label="이전 달">‹</button><b id="cal-title"></b><button class="chip" type="button" data-cal="1" aria-label="다음 달">›</button></div>
+    <div id="cal-body"></div>
+    <div class="actions sticky-actions"><button class="btn ghost" data-sheet="cancel" type="button">닫기</button>${S.canWrite?'<button class="btn primary" data-sheet="save" type="button">+ 일정 추가</button>':""}</div>`,
+  async()=>{eventSheet()});
+  renderCal();
+}
+function eventSheet(ev){
+  const isNew=!ev; ev=ev||{title:"",date:""};
+  openSheet(`<h3>${isNew?"일정 추가":"일정 수정"}</h3>
+    <div class="field"><label for="f-title">일정 이름</label><input id="f-title" value="${esc(ev.title)}" placeholder="예: 촬영"></div>
+    <div class="filters" style="margin:-4px 0 12px">${["본식","상견례","촬영","웨딩홀 상담"].map(x=>`<button class="chip" type="button" data-q="${x}">${x}</button>`).join("")}</div>
+    <div class="field"><label for="f-edate">날짜</label><input id="f-edate" type="date" value="${esc(ev.date||"")}"></div>
+    <div class="actions">${isNew?"":'<button class="btn danger" data-sheet="del" type="button">삭제</button>'}<button class="btn ghost" data-sheet="cancel" type="button">취소</button><button class="btn primary" data-sheet="save" type="button">저장</button></div>`,
+  async mode=>{
+    try{
+      if(mode==="delete"){closeSheet();await deleteWithUndo("events",ev.id,ev.title);return}
+      const title=$("f-title").value.trim(), date=$("f-edate").value;
+      if(!title){sheetErr("일정 이름을 적어주세요");return}
+      if(!date){sheetErr("날짜를 골라주세요");return}
+      const body={title,date,order:ev.order??Date.now()};
+      if(isNew) await S.db.collection("events").add(body); else await S.db.doc("events/"+ev.id).set(body);
+      closeSheet();
+    }catch(err){sheetErr(writeMsg(err))}
+  });
+}
+$("sheet-in").addEventListener("click",e=>{
+  const c=e.target.closest("[data-cal]");
+  if(c){S.calM+=+c.dataset.cal; if(S.calM<0){S.calM=11;S.calY--} if(S.calM>11){S.calM=0;S.calY++} renderCal(); return}
+  const q=e.target.closest("[data-q]"); if(q){$("f-title").value=q.dataset.q; return}
+  const r=e.target.closest("[data-ev]"); if(r&&S.canWrite) eventSheet(S.events.find(x=>x.id===r.dataset.ev));
+});
+const openDday=()=>{if(!S.db) return; if(!validEv().length&&S.canWrite) eventSheet(); else calSheet()};
+$("dday").addEventListener("click",openDday);
+$("dday").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();openDday()}});
+$("cal-btn").addEventListener("click",()=>{if(S.db) calSheet()});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden) renderDday()});
+
 /* ---------- 지출 (혜경 / 병재가 각자 쓴 돈) ---------- */
 S.spends=[]; S.spendFilter="all"; S.loaded.s=false;
 const won=n=>(n||0).toLocaleString("ko-KR")+"원";
@@ -951,7 +1047,7 @@ function askDelete(name,extra){
 }
 let undoT=null, undoFn=null;
 async function deleteWithUndo(col,id,label){
-  const src=col==="vendors"?{id,...S.vendors[id]}:(col==="tasks"?S.tasks:col==="costs"?S.costs:col==="spends"?S.spends:S.halls).find(x=>x.id===id);
+  const src=col==="vendors"?{id,...S.vendors[id]}:(col==="tasks"?S.tasks:col==="costs"?S.costs:col==="spends"?S.spends:col==="events"?S.events:S.halls).find(x=>x.id===id);
   const {id:_,...body}=src||{};
   try{await S.db.doc(col+"/"+id).delete()}catch(err){showNotice(writeMsg(err));return false}
   showUndo(`‘${label||"항목"}’ 삭제했어요`,async()=>{await S.db.doc(col+"/"+id).set(body)});
@@ -972,7 +1068,7 @@ $("undo-btn").addEventListener("click",async()=>{
 $("undo-x").addEventListener("click",hideUndo);
 
 function showNotice(msg){$("notice").textContent=msg;$("notice").hidden=!msg}
-function setReadOnly(){S.canWrite=false;$("fab").hidden=true;$("budget-btn").hidden=true;showNotice("보기 전용이에요. 체크와 수정은 편집 권한이 있어야 해요.");renderTasks();renderCosts();renderHalls();renderVendors();renderSpends()}
+function setReadOnly(){S.canWrite=false;$("fab").hidden=true;$("budget-btn").hidden=true;showNotice("보기 전용이에요. 체크와 수정은 편집 권한이 있어야 해요.");renderTasks();renderCosts();renderHalls();renderVendors();renderSpends();renderDday()}
 
 /* ---------- splash ---------- */
 (function(){
@@ -1005,7 +1101,7 @@ function setReadOnly(){S.canWrite=false;$("fab").hidden=true;$("budget-btn").hid
   if(!db){
     S.loaded.t=S.loaded.c=true; $("slider").innerHTML='<div class="slide"><div class="empty">공유받은 링크로 열어주세요</div></div>'; $("hall-tools")&&0;
     $("ck-groups").innerHTML=$("b-groups").innerHTML='<div class="empty">공유받은 링크로 열어주세요</div>';
-    $("fab").hidden=true;return;
+    $("fab").hidden=true;$("dday").hidden=true;return;
   }
   S.db=db;
   const user=await window.claude.use("user").catch(()=>null);
@@ -1015,6 +1111,7 @@ function setReadOnly(){S.canWrite=false;$("fab").hidden=true;$("budget-btn").hid
   db.collection("costs").onSnapshot(s=>{S.costs=s.docs.map(d=>({id:d.id,...d.data()}));S.loaded.c=true;renderCosts()},()=>showNotice("비용 목록을 불러오지 못했어요. 새로고침해 주세요."));
   db.collection("halls").onSnapshot(s=>{S.halls=s.docs.map(d=>({id:d.id,...d.data()}));S.loaded.h=true;renderHalls()},()=>showNotice("웨딩홀 비교를 불러오지 못했어요. 새로고침해 주세요."));
   db.collection("vendors").onSnapshot(s=>{const m={};s.docs.forEach(d=>m[d.id]=d.data());S.vendors=m;S.loaded.v=true;renderVendors()},()=>showNotice("업체 목록을 불러오지 못했어요. 새로고침해 주세요."));
+  db.collection("events").onSnapshot(s=>{S.events=s.docs.map(d=>({id:d.id,...d.data()}));S.loaded.e=true;renderDday();if(!$("sheet").hidden&&$("cal-body")) renderCal()},()=>showNotice("일정을 불러오지 못했어요. 새로고침해 주세요."));
   db.collection("spends").onSnapshot(s=>{S.spends=s.docs.map(d=>({id:d.id,...d.data()}));S.loaded.s=true;renderSpends()},()=>showNotice("지출 목록을 불러오지 못했어요. 새로고침해 주세요."));
   db.doc("meta/picks").onSnapshot(s=>{S.picks=s.exists?{...s.data()}:{};renderVendors()});
   db.doc("meta/budget").onSnapshot(s=>{S.budget=s.exists?(s.data().total||0):0;renderCosts()});
@@ -1086,7 +1183,7 @@ if(FIREBASE_CONFIG.apiKey.includes("여기에")){
   const h=document.querySelector("header"); if(h){
     const b=document.createElement("button"); b.className="share-btn"; b.type="button"; b.textContent="링크 복사";
     b.onclick=async()=>{try{await navigator.clipboard.writeText(location.origin+location.pathname+"?k="+KEY);b.textContent="복사됨!"}catch(e){prompt("이 링크를 남자친구에게 보내주세요",location.href)}setTimeout(()=>b.textContent="링크 복사",1500)};
-    h.appendChild(b);
+    h.appendChild(b); const cb=$g("cal-btn"); if(cb) cb.style.right="86px";
   }
 
   /* first run: offer to import data-export.json */
@@ -1100,7 +1197,7 @@ if(FIREBASE_CONFIG.apiKey.includes("여기에")){
       try{
         const j=JSON.parse(await e.target.files[0].text()); const data=j.data||j;
         const batch=writeBatch(fs); let n=0;
-        for(const col of ["tasks","costs","halls","vendors","spends","meta"]) for(const [id,body] of Object.entries(data[col]||{})){batch.set(doc(fs,base+col+"/"+id),body);n++}
+        for(const col of ["tasks","costs","halls","vendors","spends","events","meta"]) for(const [id,body] of Object.entries(data[col]||{})){batch.set(doc(fs,base+col+"/"+id),body);n++}
         if(!n) throw new Error("비어 있는 파일이에요");
         await batch.commit(); $g("gate").hidden=true;
       }catch(err){$g("imp-err").textContent="불러오지 못했어요: "+(err.message||err)}
